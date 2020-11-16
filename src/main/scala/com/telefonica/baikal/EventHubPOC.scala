@@ -1,13 +1,17 @@
 package com.telefonica.baikal
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.concurrent.duration._
 
+import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream._
-import akka.stream.scaladsl.{FileIO, Framing}
+import akka.stream.scaladsl.{FileIO, Framing, Sink, Source}
 import akka.util.ByteString
-import com.telefonica.baikal.eventhub.EventHubProducer
+import com.telefonica.baikal.eventhub.{EventHubConsumer, EventHubProducer}
 import org.rogach.scallop.{ScallopConf, ScallopOption, ValueConverter, singleArgConverter}
 import org.apache.logging.log4j.LogManager
 
@@ -23,6 +27,7 @@ object EventHubPOC extends App {
     val eventhub: ScallopOption[String] = opt[String](required = true, name = "eventhub", descr = "EventHub name")
     val sasConnection: ScallopOption[String] = opt[String](required = true, name = "sas", descr = "SAS connection string between \"\"").map(_.replaceAll("\"", ""))
     val inputData: ScallopOption[Path] = opt[Path](required = false, name = "input", descr = "Input data file", validate = path => Files.exists(path))
+    val outputData: ScallopOption[Path] = opt[Path](required = false, name = "output", descr = "Output data file")
 
     banner("EventHub consumer/producer using Kafka interface")
     footer(
@@ -46,14 +51,35 @@ object EventHubPOC extends App {
   {
     mode match {
       case "consumer" =>
-        ???
+        val output = Option(Args.outputData()).getOrElse(throw new IllegalArgumentException("--output path is mandatory in consumer mode"))
+        val consumer = new EventHubConsumer(namesapce, evethub, sasConnection)
+        for {
+          _ <- Future.successful(())
+          _ <- {
+            Source.tick(initialDelay = 0 seconds, interval = 1 second, NotUsed)
+              .map(_ => consumer.read())
+              .flatMapConcat(messages => {
+                Source(messages.map(bytes => ByteString(bytes) ++ ByteString(System.lineSeparator)).toList)
+              })
+              .map(Some(_))
+              .keepAlive(1 minute, () => None)
+              .takeWhile(_.isDefined)
+              .map(_.get)
+              .withAttributes(ActorAttributes.supervisionStrategy(ex => {
+                logger.error("An error occurred in the main flow", ex)
+                Supervision.Stop
+              }))
+              .runWith(FileIO.toPath(output))
+          }
+        } yield consumer.close()
       case "producer" =>
+        val input = Option(Args.inputData()).getOrElse(throw new IllegalArgumentException("--input path is mandatory in consumer mode"))
         val bufferSize = 20000
         val producer = new EventHubProducer(namesapce, sasConnection)
         for {
           _ <- {
-            FileIO.fromPath(Args.inputData())
-              .via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 1000000, allowTruncation = true).map(_.utf8String))
+            FileIO.fromPath(input)
+              .via(Framing.delimiter(ByteString(System.lineSeparator), maximumFrameLength = 1000000, allowTruncation = true).map(_.utf8String))
               .mapAsyncUnordered(bufferSize)(producer.send(evethub, _))
               .withAttributes(Attributes.inputBuffer(initial = bufferSize, max = bufferSize))
               .withAttributes(ActorAttributes.supervisionStrategy(ex => {

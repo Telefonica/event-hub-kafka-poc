@@ -15,7 +15,7 @@ lazy val root = (project in file("."))
   )
 
 publishMavenStyle in ThisBuild := true
-assemblyOutputPath in assembly := new File(s"dist/thor-analyser.jar")
+assemblyOutputPath in assembly := new File(s"dist/event-hub-kafka-poc.jar")
 assemblyMergeStrategy in assembly := {
   case "reference.conf" => MergeStrategy.concat
   case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard

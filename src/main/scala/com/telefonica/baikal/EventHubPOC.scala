@@ -73,7 +73,7 @@ object EventHubPOC extends App {
           }
         } yield consumer.close()
       case "producer" =>
-        val input = Option(Args.inputData()).getOrElse(throw new IllegalArgumentException("--input path is mandatory in consumer mode"))
+        val input = Option(Args.inputData()).getOrElse(throw new IllegalArgumentException("--input path is mandatory in producer mode"))
         val bufferSize = 20000
         val producer = new EventHubProducer(namesapce, sasConnection)
         for {

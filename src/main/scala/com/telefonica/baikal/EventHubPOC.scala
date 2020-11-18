@@ -2,16 +2,17 @@ package com.telefonica.baikal
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
-
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream._
 import akka.stream.scaladsl.{FileIO, Framing, Sink, Source}
 import akka.util.ByteString
 import com.telefonica.baikal.eventhub.{EventHubConsumer, EventHubProducer}
+import org.apache.kafka.clients.producer.{Callback, ProducerRecord, RecordMetadata}
 import org.rogach.scallop.{ScallopConf, ScallopOption, ValueConverter, singleArgConverter}
 import org.apache.logging.log4j.LogManager
 
@@ -74,18 +75,22 @@ object EventHubPOC extends App {
         } yield consumer.close()
       case "producer" =>
         val input = Option(Args.inputData()).getOrElse(throw new IllegalArgumentException("--input path is mandatory in producer mode"))
-        val bufferSize = 20000
+        val bufferSize = 200000
         val producer = new EventHubProducer(namesapce, sasConnection)
         for {
           _ <- {
             FileIO.fromPath(input)
-              .via(Framing.delimiter(ByteString(System.lineSeparator), maximumFrameLength = 1000000, allowTruncation = true).map(_.utf8String))
-              .mapAsyncUnordered(bufferSize)(producer.send(evethub, _))
-              .withAttributes(Attributes.inputBuffer(initial = bufferSize, max = bufferSize))
-              .withAttributes(ActorAttributes.supervisionStrategy(ex => {
-                logger.error("An error occurred in the main flow", ex)
-                Supervision.Stop
-              }))
+              .via(Framing.delimiter(ByteString(System.lineSeparator), maximumFrameLength = 1000000, allowTruncation = true))
+              .map(_.utf8String)
+              .map { msg =>
+                try {
+                  producer.producer.send(new ProducerRecord[String, Array[Byte]](evethub, msg.getBytes), (metadata: RecordMetadata, ex: Exception) => {
+                    if (ex != null) logger.error("ERROR", ex)
+                  })
+                } catch {
+                  case e: Throwable => logger.error("ERROR SEND", e)
+                }
+              }
               .run()
           }
         } yield producer.close()

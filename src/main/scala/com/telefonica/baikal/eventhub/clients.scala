@@ -18,7 +18,7 @@ class EventHubProducer(namespace: String, sasConnection: String) {
     ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG -> "org.apache.kafka.common.serialization.ByteArraySerializer",
   ) ++ EventHubClientConfiguration.getSaslConfig(sasConnection) ++ EventHubClientConfiguration.producer
 
-  private val producer = new KafkaProducer[String, Array[Byte]](config.asJava)
+  val producer = new KafkaProducer[String, Array[Byte]](config.asJava)
 
   def send(eventhub: String, message: String): Future[RecordMetadata] = {
     val result = Promise[RecordMetadata]()

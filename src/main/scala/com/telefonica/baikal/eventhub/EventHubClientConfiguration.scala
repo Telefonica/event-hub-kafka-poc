@@ -25,8 +25,8 @@ object EventHubClientConfiguration {
       ProducerConfig.METADATA_MAX_AGE_CONFIG -> "60000",
       ProducerConfig.METADATA_MAX_IDLE_CONFIG -> "180000",
       ProducerConfig.COMPRESSION_TYPE_CONFIG -> "none",
-      ProducerConfig.ACKS_CONFIG -> "all",
-      ProducerConfig.BATCH_SIZE_CONFIG -> "1000000"
+      ProducerConfig.ACKS_CONFIG -> "all"
+      //ProducerConfig.BATCH_SIZE_CONFIG -> "1000000"
     )
   }
 

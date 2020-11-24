@@ -74,14 +74,13 @@ object EventHubPOC extends App {
         } yield consumer.close()
       case "producer" =>
         val input = Option(Args.inputData()).getOrElse(throw new IllegalArgumentException("--input path is mandatory in producer mode"))
-        val bufferSize = 20000
         val producer = new EventHubProducer(namesapce, sasConnection)
         for {
           _ <- {
             FileIO.fromPath(input)
-              .via(Framing.delimiter(ByteString(System.lineSeparator), maximumFrameLength = 1000000, allowTruncation = true).map(_.utf8String))
-              .mapAsyncUnordered(bufferSize)(producer.send(evethub, _))
-              .withAttributes(Attributes.inputBuffer(initial = bufferSize, max = bufferSize))
+              .via(Framing.delimiter(ByteString(System.lineSeparator), maximumFrameLength = 1000000, allowTruncation = true))
+              .map(_.utf8String)
+              .map(producer.send(evethub, _))
               .withAttributes(ActorAttributes.supervisionStrategy(ex => {
                 logger.error("An error occurred in the main flow", ex)
                 Supervision.Stop
